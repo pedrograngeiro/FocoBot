@@ -1,14 +1,10 @@
 import asyncio
 import discord
 import os
-from dotenv import load_dotenv
+from dotenv import load_dotenv #Biblioteca que auxilia a conexão do api token
 from discord.ext import commands
 
-
-
-
-
-load_dotenv()
+load_dotenv()#carrega todos os arquivos .env
 
 #client = discord.Client()
 bot = commands.Bot(command_prefix='!')
@@ -16,7 +12,7 @@ bot = commands.Bot(command_prefix='!')
 #@client.event
 @bot.event
 async def on_ready():
-    print('We have logged in as {}'.format(bot.user))
+    print('Estamos logados como: {}'.format(bot.user))
 
 #@client.event
 @bot.command(name="start", help="Inicia o foco ")

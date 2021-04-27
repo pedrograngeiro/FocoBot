@@ -19,3 +19,6 @@ class Timer:
 
     def tick(self):
         self.ticks += 1
+        if self.get_ticks() >= self.max_ticks:
+            self.stop()
+

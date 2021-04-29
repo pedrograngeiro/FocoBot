@@ -1,6 +1,7 @@
 import asyncio
 import discord
-from timer import Timer
+from timer import Timer, TimerStatus
+from dotenv import load_dotenv
 from discord.ext import commands
 
 COLOR_DANGER = 0x633333
@@ -19,12 +20,16 @@ class DiscordCog(commands.Cog):
 
     @commands.command()
     async def start(self, ctx):
+        if self.timer.get_status() == TimerStatus.RUNNING:
+            await self.show_message(ctx, "O bot de foco já esta rodando! ", COLOR_SUCCESS)
+            return
         await self.show_message(ctx, "Hora de começar a focar! ", COLOR_SUCCESS)
         self.timer.start()
-        while self.timer.is_running():
+        while self.timer.get_status() == TimerStatus.RUNNING:
             await asyncio.sleep(1)  # 25 x 60
             self.timer.tick()
-        await self.show_message(ctx, "Hora de começar sua pausa! ", COLOR_SUCCESS)
+        if self.timer.get_status() == TimerStatus.EXPIRED:
+            await self.show_message(ctx, "Hora de descansar! ", COLOR_SUCCESS)
 
     async def show_message(self, ctx, title, color):
         start_work_em = discord.Embed(title=title, color=color)
@@ -32,18 +37,21 @@ class DiscordCog(commands.Cog):
 
     @commands.command()
     async def stop(self, ctx):
-        await show_message(ctx, "Hora de tirar uma pausa!", COLOR_DANGER)
-        timer.stop()
+        if self.timer.get_status() != TimerStatus.RUNNING:
+            await self.show_message(ctx, "O bot já está pausado! ", COLOR_SUCCESS)
+            return
+        await self.show_message(ctx, "Hora de fazer uma pausa!", COLOR_DANGER)
+        self.timer.stop()
 
     @commands.command()
     async def show_time(self, ctx):
-        await ctx.send(f"Current time status is: {timer.get_ticks()}")
-        await ctx.send(f"Current time is: {timer.get_ticks()}")
+        await ctx.send(f"Current time status is: {self.timer.get_status()}")
+        await ctx.send(f"Current time is: {self.timer.get_ticks()}")
 
     @commands.command()
     async def show_help(self, ctx):
         help_commands = dict()
-        for command in bot.commands:
+        for command in self.bot.commands:
             help_commands[command.name] = command.help
         description = "Os comandos do bot são: {}".format(help_commands)
 

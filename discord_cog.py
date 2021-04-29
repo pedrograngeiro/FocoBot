@@ -24,12 +24,18 @@ class DiscordCog(commands.Cog):
             await self.show_message(ctx, "O bot de foco já esta rodando! ", COLOR_SUCCESS)
             return
         await self.show_message(ctx, "Hora de começar a focar! ", COLOR_SUCCESS)
-        self.timer.start()
+        self.timer.start(max_ticks=10)
         while self.timer.get_status() == TimerStatus.RUNNING:
             await asyncio.sleep(1)  # 25 x 60
             self.timer.tick()
         if self.timer.get_status() == TimerStatus.EXPIRED:
             await self.show_message(ctx, "Hora de descansar! ", COLOR_SUCCESS)
+            self.timer.start(max_ticks=10)
+            while self.timer.get_status() == TimerStatus.RUNNING:
+                await asyncio.sleep(1)  # 25 x 60
+                self.timer.tick()
+            if self.timer.get_status() == TimerStatus.EXPIRED:
+                await self.show_message(ctx, "Hora de uma pausa longa! ", COLOR_SUCCESS)
 
     async def show_message(self, ctx, title, color):
         start_work_em = discord.Embed(title=title, color=color)

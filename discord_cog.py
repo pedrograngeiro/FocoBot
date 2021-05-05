@@ -25,51 +25,27 @@ class DiscordCog(commands.Cog):
             return
         await self.show_message(ctx, "Hora de começar a focar! ", COLOR_SUCCESS)
 
-        #Round 1
-        self.timer.start(max_ticks=1.500) #25 minutos
-        while self.timer.get_status() == TimerStatus.RODANDO:
-            await asyncio.sleep(1)
-            self.timer.tick()
+        self.timer.start(max_ticks=150)
+        await self.running()
+
         if self.timer.get_status() == TimerStatus.FINALIZADO:
             await self.show_message(ctx, "Hora de descansar! ", COLOR_SUCCESS)
-            self.timer.start(max_ticks=300)
+            self.timer.start(max_ticks=30)
             while self.timer.get_status() == TimerStatus.RODANDO:
                 await asyncio.sleep(1)  # 25 x 60
                 self.timer.tick()
             if self.timer.get_status() == TimerStatus.FINALIZADO:
                 await self.show_message(ctx, "Hora de começar a focar ", COLOR_SUCCESS)
 
-                # Round 2
-                self.timer.start(max_ticks=1.500)  #25 minutos
-                while self.timer.get_status() == TimerStatus.RODANDO:
-                    await asyncio.sleep(1)
-                    self.timer.tick()
-                if self.timer.get_status() == TimerStatus.FINALIZADO:
-                    await self.show_message(ctx, "Hora de descansar! ", COLOR_SUCCESS)
-                    self.timer.start(max_ticks=300)
-                    while self.timer.get_status() == TimerStatus.RODANDO:
-                        await asyncio.sleep(1)  # 25 x 60
-                        self.timer.tick()
-                    if self.timer.get_status() == TimerStatus.FINALIZADO:
-                        await self.show_message(ctx, "Hora de começar a focar ", COLOR_SUCCESS)
-
-                        # Round 3
-                        self.timer.start(max_ticks=1.500)  #25 minutos
-                        while self.timer.get_status() == TimerStatus.RODANDO:
-                            await asyncio.sleep(1)
-                            self.timer.tick()
-                        if self.timer.get_status() == TimerStatus.FINALIZADO:
-                            await self.show_message(ctx, "Hora de descansar! ", COLOR_SUCCESS)
-                            self.timer.start(max_ticks=300)
-                            while self.timer.get_status() == TimerStatus.RODANDO:
-                                await asyncio.sleep(1)  # 25 x 60
-                                self.timer.tick()
-                            if self.timer.get_status() == TimerStatus.FINALIZADO:
-                                await self.show_message(ctx, "Hora de começar a focar ", COLOR_SUCCESS)
 
     async def show_message(self, ctx, title, color):
         start_work_em = discord.Embed(title=title, color=color)
         await ctx.send(embed=start_work_em)
+
+    async def running(self):
+        while self.timer.get_status() == TimerStatus.RODANDO:
+            await asyncio.sleep(1)
+            self.timer.tick()
 
     @commands.command()
     async def stop(self, ctx):
@@ -106,3 +82,4 @@ class DiscordCog(commands.Cog):
         show_help_em = discord.Embed(title="Este é o Professor foca, um bot de sprints!", description=description,
                                      color=COLOR_SUCCESS)
         await ctx.send(embed=show_help_em)
+

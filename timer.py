@@ -15,7 +15,7 @@ class Timer:
     def __init__(self):
         self.status = TimerStatus.INICIALIZADO
         self.ticks = 0
-        self.round = 0
+        self.round = 1
         self.descanso = 0
 
     def get_status(self):
@@ -43,7 +43,8 @@ class Timer:
     def add_round(self):
         if self.get_status() == TimerStatus.RODANDO:
             self.round += 1
-        if self.get_status() == TimerStatus.FINALIZADO:
-            self.descanso += 1
+        return self.round
+"""        if self.get_status() == TimerStatus.FINALIZADO:
+            self.descanso += 1"""
 
 

@@ -20,23 +20,23 @@ class DiscordCog(commands.Cog):
 
     @commands.command()
     async def start(self, ctx):
+        # round 1
         if self.timer.get_status() == TimerStatus.RODANDO:
             await self.show_message(ctx, "O bot de foco já esta rodando! ", COLOR_SUCCESS)
             return
-        await self.show_message(ctx, "Hora de começar a focar! ", COLOR_SUCCESS)
+        await self.show_message(ctx, "Hora de começar a focar! Intervalo de 25 minutos ", COLOR_SUCCESS)
+        self.timer.start(max_ticks=15)
 
-        self.timer.start(max_ticks=150)
         await self.running()
+        self.timer.add_round()
 
-        if self.timer.get_status() == TimerStatus.FINALIZADO:
-            await self.show_message(ctx, "Hora de descansar! ", COLOR_SUCCESS)
-            self.timer.start(max_ticks=30)
-            while self.timer.get_status() == TimerStatus.RODANDO:
-                await asyncio.sleep(1)  # 25 x 60
-                self.timer.tick()
-            if self.timer.get_status() == TimerStatus.FINALIZADO:
-                await self.show_message(ctx, "Hora de começar a focar ", COLOR_SUCCESS)
+        self.tempo = 'Hora de descansar! Intervalo de 5 minutos'
+        await self.show_message(ctx, f"O bot está: {self.tempo}", COLOR_SUCCESS)
+        self.timer.start(max_ticks=30)
 
+        await self.running()
+        self.timer.add_round()
+        # fim round 1
 
     async def show_message(self, ctx, title, color):
         start_work_em = discord.Embed(title=title, color=color)
@@ -57,6 +57,7 @@ class DiscordCog(commands.Cog):
 
     @commands.command()
     async def mostrar_tempo(self, ctx):
+
         if self.timer.get_status() == TimerStatus.INICIALIZADO:
             self.tempo = 'ONLINE'
 
@@ -69,8 +70,8 @@ class DiscordCog(commands.Cog):
         if self.timer.get_status() == TimerStatus.FINALIZADO:
             self.tempo = 'FINALIZADO'
 
-        await ctx.send(f"O bot está: {self.tempo}")
-        await ctx.send(f"O tempo é: {self.timer.get_ticks()}")
+        await self.show_message(ctx, f"Estamos no round: {self.timer.round} \n"
+                                     f"O tempo é: {self.timer.get_ticks()}", COLOR_SUCCESS)
 
     @commands.command()
     async def show_help(self, ctx):
@@ -82,4 +83,3 @@ class DiscordCog(commands.Cog):
         show_help_em = discord.Embed(title="Este é o Professor foca, um bot de sprints!", description=description,
                                      color=COLOR_SUCCESS)
         await ctx.send(embed=show_help_em)
-

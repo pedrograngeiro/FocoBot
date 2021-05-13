@@ -1,6 +1,8 @@
 import asyncio
 import discord
+import sqlite3
 from timer import Timer, TimerStatus
+from datetime import datetime
 from dotenv import load_dotenv
 from discord.ext import commands
 
@@ -13,6 +15,21 @@ class DiscordCog(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
         self.timer = Timer()
+        self.db = sqlite3.connect('pomobot.db')
+        self.create_tables()
+
+    def create_tables(self):
+        cur = self.db.cursor()
+        cur.execute('''
+                        CREATE TABLE IF NOT EXISTS alarms (
+                            id integer PRIMARY KEY AUTOINCREMENT,
+                            username text NOT NULL,
+                            start_time text NOT NULL,
+                            delay text NOT NULL
+                            )
+                        ''')
+        self.db.commit()
+
 
     @commands.Cog.listener()
     async def on_ready(self):
@@ -24,6 +41,16 @@ class DiscordCog(commands.Cog):
         if self.timer.get_status() == TimerStatus.RODANDO:
             await self.show_message(ctx, "O bot de foco já esta rodando! ", COLOR_SUCCESS)
             return
+
+        now = datetime.now()
+        current_time = now.strftime("%H:%M:%S")
+        cur = self.db.cursor()
+        cur.execute('''
+                                INSERT INTO alarms (username, start_time, delay) 
+                                    VALUES (?,?,?)
+                                ''', [str(ctx.author),current_time, '10'])
+        self.db.commit()
+
         await self.show_message(ctx, "Hora de começar a focar! Intervalo de 25 minutos ", COLOR_SUCCESS)
         self.timer.start(max_ticks=15)
 

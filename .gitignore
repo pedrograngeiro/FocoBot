@@ -5,3 +5,7 @@ images/imagem foca +1baixo.png
 images/imagem foca.png
 htmlcov
 tests/.coverage
+
+
+#sqlite3 db files
+*.db

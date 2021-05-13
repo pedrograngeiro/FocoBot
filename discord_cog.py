@@ -1,6 +1,8 @@
 import asyncio
 import discord
+import sqlite3
 from timer import Timer, TimerStatus
+from datetime import datetime
 from dotenv import load_dotenv
 from discord.ext import commands
 
@@ -13,6 +15,21 @@ class DiscordCog(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
         self.timer = Timer()
+        self.db = sqlite3.connect('pomobot.db')
+        self.create_tables()
+
+    def create_tables(self):
+        cur = self.db.cursor()
+        cur.execute('''
+                        CREATE TABLE IF NOT EXISTS alarms (
+                            id integer PRIMARY KEY AUTOINCREMENT,
+                            username text NOT NULL,
+                            start_time text NOT NULL,
+                            delay text NOT NULL
+                            )
+                        ''')
+        self.db.commit()
+
 
     @commands.Cog.listener()
     async def on_ready(self):
@@ -20,56 +37,42 @@ class DiscordCog(commands.Cog):
 
     @commands.command()
     async def start(self, ctx):
+        # round 1
         if self.timer.get_status() == TimerStatus.RODANDO:
             await self.show_message(ctx, "O bot de foco já esta rodando! ", COLOR_SUCCESS)
             return
-        await self.show_message(ctx, "Hora de começar a focar! ", COLOR_SUCCESS)
 
-        #Round 1
-        self.timer.start(max_ticks=1.500) #25 minutos
-        while self.timer.get_status() == TimerStatus.RODANDO:
-            await asyncio.sleep(1)
-            self.timer.tick()
-        if self.timer.get_status() == TimerStatus.FINALIZADO:
-            await self.show_message(ctx, "Hora de descansar! ", COLOR_SUCCESS)
-            self.timer.start(max_ticks=300)
-            while self.timer.get_status() == TimerStatus.RODANDO:
-                await asyncio.sleep(1)  # 25 x 60
-                self.timer.tick()
-            if self.timer.get_status() == TimerStatus.FINALIZADO:
-                await self.show_message(ctx, "Hora de começar a focar ", COLOR_SUCCESS)
+        now = datetime.now()
+        current_time = now.strftime("%H:%M:%S")
+        cur = self.db.cursor()
+        cur.execute('''
+                                INSERT INTO alarms (username, start_time, delay) 
+                                    VALUES (?,?,?)
+                                ''', [str(ctx.author),current_time, '10'])
+        self.db.commit()
 
-                # Round 2
-                self.timer.start(max_ticks=1.500)  #25 minutos
-                while self.timer.get_status() == TimerStatus.RODANDO:
-                    await asyncio.sleep(1)
-                    self.timer.tick()
-                if self.timer.get_status() == TimerStatus.FINALIZADO:
-                    await self.show_message(ctx, "Hora de descansar! ", COLOR_SUCCESS)
-                    self.timer.start(max_ticks=300)
-                    while self.timer.get_status() == TimerStatus.RODANDO:
-                        await asyncio.sleep(1)  # 25 x 60
-                        self.timer.tick()
-                    if self.timer.get_status() == TimerStatus.FINALIZADO:
-                        await self.show_message(ctx, "Hora de começar a focar ", COLOR_SUCCESS)
+        await self.show_message(ctx, "Hora de começar a focar! Intervalo de 25 minutos ", COLOR_SUCCESS)
+        self.timer.start(max_ticks=15)
 
-                        # Round 3
-                        self.timer.start(max_ticks=1.500)  #25 minutos
-                        while self.timer.get_status() == TimerStatus.RODANDO:
-                            await asyncio.sleep(1)
-                            self.timer.tick()
-                        if self.timer.get_status() == TimerStatus.FINALIZADO:
-                            await self.show_message(ctx, "Hora de descansar! ", COLOR_SUCCESS)
-                            self.timer.start(max_ticks=300)
-                            while self.timer.get_status() == TimerStatus.RODANDO:
-                                await asyncio.sleep(1)  # 25 x 60
-                                self.timer.tick()
-                            if self.timer.get_status() == TimerStatus.FINALIZADO:
-                                await self.show_message(ctx, "Hora de começar a focar ", COLOR_SUCCESS)
+        await self.running()
+        self.timer.add_round()
+
+        self.tempo = 'Hora de descansar! Intervalo de 5 minutos'
+        await self.show_message(ctx, f"O bot está: {self.tempo}", COLOR_SUCCESS)
+        self.timer.start(max_ticks=30)
+
+        await self.running()
+        self.timer.add_round()
+        # fim round 1
 
     async def show_message(self, ctx, title, color):
         start_work_em = discord.Embed(title=title, color=color)
         await ctx.send(embed=start_work_em)
+
+    async def running(self):
+        while self.timer.get_status() == TimerStatus.RODANDO:
+            await asyncio.sleep(1)
+            self.timer.tick()
 
     @commands.command()
     async def stop(self, ctx):
@@ -81,6 +84,7 @@ class DiscordCog(commands.Cog):
 
     @commands.command()
     async def mostrar_tempo(self, ctx):
+
         if self.timer.get_status() == TimerStatus.INICIALIZADO:
             self.tempo = 'ONLINE'
 
@@ -93,8 +97,8 @@ class DiscordCog(commands.Cog):
         if self.timer.get_status() == TimerStatus.FINALIZADO:
             self.tempo = 'FINALIZADO'
 
-        await ctx.send(f"O bot está: {self.tempo}")
-        await ctx.send(f"O tempo é: {self.timer.get_ticks()}")
+        await self.show_message(ctx, f"Estamos no round: {self.timer.round} \n"
+                                     f"O tempo é: {self.timer.get_ticks()}", COLOR_SUCCESS)
 
     @commands.command()
     async def show_help(self, ctx):

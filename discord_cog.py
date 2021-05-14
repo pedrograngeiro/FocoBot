@@ -11,6 +11,7 @@ COLOR_SUCCESS = 0x33c633
 class DiscordCog(commands.Cog):
 
     def __init__(self, bot):
+        self.round = 0
         self.bot = bot
         self.timer = Timer()
 
@@ -24,19 +25,35 @@ class DiscordCog(commands.Cog):
         if self.timer.get_status() == TimerStatus.RODANDO:
             await self.show_message(ctx, "O bot de foco já esta rodando! ", COLOR_SUCCESS)
             return
-        await self.show_message(ctx, "Hora de começar a focar! Intervalo de 25 minutos ", COLOR_SUCCESS)
-        self.timer.start(max_ticks=15)
 
+        await self.show_message(ctx, "Hora de começar a focar! Intervalo de 25 minutos ", COLOR_SUCCESS)
+        self.timer.start(max_ticks=30)
+        await self.add_round()
+        await self.show_message(ctx, f"Estamos no round: {self.round}", COLOR_SUCCESS)
         await self.running()
-        self.timer.add_round()
 
         self.tempo = 'Hora de descansar! Intervalo de 5 minutos'
         await self.show_message(ctx, f"O bot está: {self.tempo}", COLOR_SUCCESS)
-        self.timer.start(max_ticks=30)
-
+        self.timer.start(max_ticks=10)
         await self.running()
-        self.timer.add_round()
         # fim round 1
+
+        # round 2
+        if self.timer.get_status() == TimerStatus.RODANDO:
+            await self.show_message(ctx, "O bot de foco já esta rodando! ", COLOR_SUCCESS)
+            return
+
+        await self.show_message(ctx, "Hora de começar a focar! Intervalo de 25 minutos ", COLOR_SUCCESS)
+        self.timer.start(max_ticks=30)
+        await self.add_round()
+        await self.show_message(ctx, f"Estamos no round: {self.round}", COLOR_SUCCESS)
+        await self.running()
+
+        self.tempo = 'Hora de descansar! Intervalo de 5 minutos'
+        await self.show_message(ctx, f"O bot está: {self.tempo}", COLOR_SUCCESS)
+        self.timer.start(max_ticks=10)
+        await self.running()
+        # fim round 2
 
     async def show_message(self, ctx, title, color):
         start_work_em = discord.Embed(title=title, color=color)
@@ -46,6 +63,10 @@ class DiscordCog(commands.Cog):
         while self.timer.get_status() == TimerStatus.RODANDO:
             await asyncio.sleep(1)
             self.timer.tick()
+
+    async def add_round(self):
+        self.round += 1
+
 
     @commands.command()
     async def stop(self, ctx):
@@ -70,7 +91,7 @@ class DiscordCog(commands.Cog):
         if self.timer.get_status() == TimerStatus.FINALIZADO:
             self.tempo = 'FINALIZADO'
 
-        await self.show_message(ctx, f"Estamos no round: {self.timer.round} \n"
+        await self.show_message(ctx, f"Estamos no round: {self.round} \n"
                                      f"O tempo é: {self.timer.get_ticks()}", COLOR_SUCCESS)
 
     @commands.command()

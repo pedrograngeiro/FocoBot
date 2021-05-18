@@ -1,19 +1,17 @@
-import asyncio
-import discord
 from enum import Enum
-from discord.ext import commands
 
 
 class TimerStatus(Enum):
-    INICIALIZADO = 1
-    RODANDO = 2
-    PARADO = 3
-    FINALIZADO = 4
+    INITIALIZED = 1
+    RUNNING = 2
+    STOPPED = 3
+    EXPIRED = 4
 
 
 class Timer:
+
     def __init__(self):
-        self.status = TimerStatus.INICIALIZADO
+        self.status = TimerStatus.INITIALIZED
         self.ticks = 0
 
     def get_status(self):
@@ -21,11 +19,11 @@ class Timer:
 
     def start(self, max_ticks):
         self.max_ticks = max_ticks
-        self.status = TimerStatus.RODANDO
+        self.status = TimerStatus.RUNNING
         self.ticks = 0
 
     def stop(self):
-        self.status = TimerStatus.PARADO
+        self.status = TimerStatus.STOPPED
 
     def get_ticks(self):
         return self.ticks
@@ -33,12 +31,4 @@ class Timer:
     def tick(self):
         self.ticks += 1
         if self.get_ticks() >= self.max_ticks:
-            self.status = TimerStatus.FINALIZADO
-
-    def get_round(self):
-        return self.round
-
-"""    def add_round(self):
-        self.round += 1
-
-"""
+            self.status = TimerStatus.EXPIRED

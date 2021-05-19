@@ -1,8 +1,12 @@
 import asyncio
+from asyncio import AbstractEventLoop
+import sys
 import discord
 from timer import Timer, TimerStatus
 from dotenv import load_dotenv
 from discord.ext import commands
+import time
+import queue
 
 COLOR_DANGER = 0x633333
 COLOR_SUCCESS = 0x33c633
@@ -11,8 +15,10 @@ COLOR_SUCCESS = 0x33c633
 class DiscordCog(commands.Cog):
 
     def __init__(self, bot):
+
         self.bot = bot
         self.timer = Timer()
+
 
     @commands.Cog.listener()
     async def on_ready(self):
@@ -24,23 +30,24 @@ class DiscordCog(commands.Cog):
             await self.show_message(ctx, "O bot de foco já esta rodando! ", COLOR_SUCCESS)
             return
 
-        await self.show_message(ctx, "Hora de começar a focar!\n"
-                                     "25 minutos", COLOR_SUCCESS)
-        self.timer.start(max_ticks=10)
-        while self.timer.get_status() == TimerStatus.RUNNING:
-            await asyncio.sleep(1)
-            self.timer.tick()
-        if self.timer.get_status() == TimerStatus.EXPIRED:
-            await self.show_message(ctx, "Hora da pausa!\n"
-                                         "5 minutos", COLOR_SUCCESS)
-            self.timer.start(max_ticks=10)
+        while True:
+            await self.show_message(ctx, "Hora de começar a focar!\n"
+                                         "25 minutos", COLOR_SUCCESS)
+            self.timer.start(max_ticks=1500)
             while self.timer.get_status() == TimerStatus.RUNNING:
                 await asyncio.sleep(1)
                 self.timer.tick()
             if self.timer.get_status() == TimerStatus.EXPIRED:
-                await self.show_message(ctx, "Round finalizado!", COLOR_SUCCESS)
-
-
+                await self.show_message(ctx, "Hora da pausa!\n"
+                                             "5 minutos", COLOR_SUCCESS)
+                self.timer.start(max_ticks=300)
+                while self.timer.get_status() == TimerStatus.RUNNING:
+                    await asyncio.sleep(1)
+                    self.timer.tick()
+                if self.timer.get_status() == TimerStatus.EXPIRED:
+                    await self.show_message(ctx, "Round finalizado!", COLOR_SUCCESS)
+            if self.timer.get_status() == TimerStatus.STOPPED:
+                break
     async def show_message(self, ctx, title, color):
         start_work_em = discord.Embed(title=title, color=color)
         await ctx.send(embed=start_work_em)
@@ -49,7 +56,7 @@ class DiscordCog(commands.Cog):
     async def stop(self, ctx):
         if self.timer.get_status() != TimerStatus.RUNNING:
             await self.show_message(ctx, "O focobot já está parado, você deveria iniciar o cronômetro antes de "
-                                         "pará-lo! ", COLOR_SUCCESS)
+                                         "pará-Dlo! ", COLOR_SUCCESS)
             return
         await self.show_message(ctx, "Hora de fazer uma pausa!", COLOR_DANGER)
         self.timer.stop()

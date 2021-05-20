@@ -13,6 +13,7 @@ class Timer:
     def __init__(self):
         self.status = TimerStatus.INITIALIZED
         self.ticks = 0
+        self.round = 0
 
     def get_status(self):
         return self.status
@@ -32,3 +33,4 @@ class Timer:
         self.ticks += 1
         if self.get_ticks() >= self.max_ticks:
             self.status = TimerStatus.EXPIRED
+

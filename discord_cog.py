@@ -36,7 +36,7 @@ class DiscordCog(commands.Cog):
         while True:
             await self.show_message(ctx, "Hora de começar a focar!\n"
                                          "25 minutos", COLOR_SUCCESS)
-            self.timer.start(max_ticks=10)
+            self.timer.start(max_ticks=1500)
             self.add_round()
             while self.timer.get_status() == TimerStatus.RUNNING:
                 await asyncio.sleep(1)
@@ -45,11 +45,11 @@ class DiscordCog(commands.Cog):
                 if self.round % 3 == 0:
                     await self.show_message(ctx, "Hora da pausa longa!\n"
                                                  "10 minutos", COLOR_PAUSE)
-                    self.timer.start(max_ticks=10)
+                    self.timer.start(max_ticks=600)
                 else:
                     await self.show_message(ctx, "Hora da pausa!\n"
                                                  "5 minutos", COLOR_PAUSE)
-                    self.timer.start(max_ticks=5)
+                    self.timer.start(max_ticks=300)
                 while self.timer.get_status() == TimerStatus.RUNNING:
                     await asyncio.sleep(1)
                     self.timer.tick()

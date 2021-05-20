@@ -63,16 +63,16 @@ class DiscordCog(commands.Cog):
 
     @commands.command(name="tempo", help="Mostra o tempo atual! ")
     async def show_time(self, ctx):
-        if self.timer.get_status() == TimerStatus.INICIALIZADO:
+        if self.timer.get_status() == TimerStatus.INITIALIZED:
             self.tempo = 'ONLINE'
 
-        if self.timer.get_status() == TimerStatus.RODANDO:
+        if self.timer.get_status() == TimerStatus.RUNNING:
             self.tempo = 'RODANDO'
 
-        if self.timer.get_status() == TimerStatus.PARADO:
+        if self.timer.get_status() == TimerStatus.STOPPED:
             self.tempo = 'PARADO'
 
-        if self.timer.get_status() == TimerStatus.FINALIZADO:
+        if self.timer.get_status() == TimerStatus.EXPIRED:
             self.tempo = 'FINALIZADO'
 
         await self.show_message(ctx, f"Estamos no round: {self.round} \n"

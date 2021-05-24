@@ -21,6 +21,7 @@ class DiscordCog(commands.Cog):
         self.bot = bot
         self.timer = Timer()
         self.round = 0
+        #self.numero_de_segundos = 0
 
 
     @commands.Cog.listener()
@@ -64,6 +65,7 @@ class DiscordCog(commands.Cog):
     def add_round(self):
         self.round += 1
 
+
     @commands.command(name="parar", help="Finalizar o foco! Atenção! (Não encerra o número de rounds)")
     async def stop(self, ctx):
         if self.timer.get_status() != TimerStatus.RUNNING:
@@ -98,8 +100,9 @@ class DiscordCog(commands.Cog):
         if self.timer.get_status() == TimerStatus.EXPIRED:
             self.tempo = 'FINALIZADO'
 
+        self.timer.convert_ticks()
         await self.show_message(ctx, f"Estamos no round: {self.round} \n"
-                                     f"O tempo é: {self.timer.get_ticks()}", COLOR_SUCCESS)
+                                     f"O tempo é: {self.timer.min_seg}", COLOR_SUCCESS)
 
     @commands.command(name="ajuda", help="Mostra as funções de cada comando! ")
     async def show_help(self, ctx):

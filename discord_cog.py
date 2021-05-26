@@ -1,12 +1,9 @@
 import asyncio
-from asyncio import AbstractEventLoop
 import sys
 import discord
 from timer import Timer, TimerStatus
 from dotenv import load_dotenv
 from discord.ext import commands
-import time
-import queue
 
 COLOR_DANGER = 0xff6f69
 COLOR_SUCCESS = 0x88d8b0

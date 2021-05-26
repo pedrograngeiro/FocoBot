@@ -1,7 +1,7 @@
 import asyncio
 import sys
 import discord
-from timer import Timer, TimerStatus
+from FocoBot.timer import Timer, TimerStatus
 from dotenv import load_dotenv
 from discord.ext import commands
 

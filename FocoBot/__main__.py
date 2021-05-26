@@ -2,7 +2,7 @@ import discord
 import os
 from dotenv import load_dotenv
 from discord.ext import commands
-from discord_cog import DiscordCog
+from FocoBot.discord_cog import DiscordCog
 
 load_dotenv()
 

@@ -1,5 +1,5 @@
 <h1>FocoBot</h1>
-![FocoBot-Apresentation](FocoBot/🤖FocoBot.png)
+<img src="https://github.com/pedrograngeiro/FocoBot/blob/main/%F0%9F%A4%96FocoBot.png?raw=true">
 <p>
 The FocoBot is a project created to be a discord bot pomodoro.<br>
 The idea was to be simple, weightless and functional.

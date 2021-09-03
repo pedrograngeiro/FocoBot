@@ -5,6 +5,7 @@ chardet==4.0.0
 discord.py==1.7.2
 idna==3.1
 multidict==5.1.0
+pynacl==1.4.0
 python-dotenv==0.17.1
 timer==0.1.2
 typing-extensions==3.10.0.0

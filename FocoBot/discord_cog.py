@@ -4,6 +4,7 @@ import discord
 from FocoBot.timer import Timer, TimerStatus
 from dotenv import load_dotenv
 from discord.ext import commands
+from discord import FFmpegPCMAudio
 
 COLOR_DANGER = 0xff6f69
 COLOR_SUCCESS = 0x88d8b0
@@ -31,30 +32,46 @@ class DiscordCog(commands.Cog):
             await self.show_message(ctx, "O bot de foco já esta rodando! ", COLOR_SUCCESS)
             return
 
-        while True:
-            await self.show_message(ctx, "Hora de começar a focar!\n"
-                                         "25 minutos", COLOR_SUCCESS)
-            self.timer.start(max_ticks=1500)
-            self.add_round()
-            while self.timer.get_status() == TimerStatus.RUNNING:
-                await asyncio.sleep(1)
-                self.timer.tick()
-            if self.timer.get_status() == TimerStatus.EXPIRED:
-                if self.round % 3 == 0:
-                    await self.show_message(ctx, "Hora da pausa longa!\n"
-                                                 "10 minutos", COLOR_PAUSE)
-                    self.timer.start(max_ticks=600)
-                else:
-                    await self.show_message(ctx, "Hora da pausa!\n"
-                                                 "5 minutos", COLOR_PAUSE)
-                    self.timer.start(max_ticks=300)
+        #conecta no canal de voz
+        if (ctx.author.voice):
+            channel = ctx.message.author.voice.channel
+            voice = await channel.connect() 
+            #caminho dos audios
+            sound = {
+                'start': '../sounds/start.mp3',
+                'short_break': '../sounds/short-break.mp3',
+                'long_break': '../sounds/long-break.mp3',
+            }            
+
+            while True:
+                voice.play(FFmpegPCMAudio(sound['start']))
+                await self.show_message(ctx, "Hora de começar a focar!\n"
+                                            "25 minutos", COLOR_SUCCESS)
+                self.timer.start(max_ticks=1500)
+                self.add_round()
                 while self.timer.get_status() == TimerStatus.RUNNING:
                     await asyncio.sleep(1)
                     self.timer.tick()
                 if self.timer.get_status() == TimerStatus.EXPIRED:
-                    await self.show_message(ctx, f"Round {self.round} finalizado!", COLOR_SUCCESS)
-            if self.timer.get_status() == TimerStatus.STOPPED:
-                break
+                    if self.round % 3 == 0:
+                        await self.show_message(ctx, "Hora da pausa longa!\n"
+                                                    "10 minutos", COLOR_PAUSE)
+                        voice.play(FFmpegPCMAudio(sound['long_break']))
+                        self.timer.start(max_ticks=600)
+                    else:
+                        await self.show_message(ctx, "Hora da pausa!\n"
+                                                    "5 minutos", COLOR_PAUSE)
+                        voice.play(FFmpegPCMAudio(sound['short_break']))
+                        self.timer.start(max_ticks=300)
+                    while self.timer.get_status() == TimerStatus.RUNNING:
+                        await asyncio.sleep(1)
+                        self.timer.tick()
+                    if self.timer.get_status() == TimerStatus.EXPIRED:
+                        await self.show_message(ctx, f"Round {self.round} finalizado!", COLOR_SUCCESS)
+                if self.timer.get_status() == TimerStatus.STOPPED:
+                    break
+        else:
+            await ctx.send('Entre no canal de voz para usar o Focobot.')
     async def show_message(self, ctx, title, color):
         start_work_em = discord.Embed(title=title, color=color)
         await ctx.send(embed=start_work_em)
@@ -71,6 +88,9 @@ class DiscordCog(commands.Cog):
             return
         await self.show_message(ctx, "Hora de fazer uma pausa!", COLOR_DANGER)
         self.timer.stop()
+        #disconecta do canal de voz
+        if(ctx.voice_client):
+            await ctx.guild.voice_client.disconnect()
 
     @commands.command(name="encerrar", help="Finalizar o foco! (Zerando o número de rounds!)")
     async def end(self, ctx):
@@ -82,6 +102,10 @@ class DiscordCog(commands.Cog):
         await self.show_message(ctx, "Muito obrigado por utilizar o focobot!\n"
                                      "Bom descanso!", COLOR_DANGER)
         self.timer.stop()
+        #disconecta do canal de voz
+        if(ctx.voice_client):
+            await ctx.guild.voice_client.disconnect()
+
 
     @commands.command(name="tempo", help="Mostra o tempo atual! ")
     async def show_time(self, ctx):

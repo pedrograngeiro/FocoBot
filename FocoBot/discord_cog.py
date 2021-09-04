@@ -5,7 +5,7 @@ from FocoBot.timer import Timer, TimerStatus
 from dotenv import load_dotenv
 from discord.ext import commands
 from discord import FFmpegPCMAudio
-from discord import FFmpegOpusAudio
+from discord import PCMVolumeTransformer
 
 COLOR_DANGER = 0xff6f69
 COLOR_SUCCESS = 0x88d8b0
@@ -47,7 +47,7 @@ class DiscordCog(commands.Cog):
             while True:
                 await self.show_message(ctx, "Hora de começar a focar!\n"
                                              "25 minutos", COLOR_SUCCESS)
-                voice.play(FFmpegPCMAudio(sound['start']))
+                voice.play(PCMVolumeTransformer(FFmpegPCMAudio(sound['start']), volume=0.2))
 
                 self.timer.start(max_ticks=1500) #1500
                 self.add_round()
@@ -58,12 +58,12 @@ class DiscordCog(commands.Cog):
                     if self.round % 3 == 0:
                         await self.show_message(ctx, "Hora da pausa longa!\n"
                                                     "10 minutos", COLOR_PAUSE)
-                        voice.play(FFmpegPCMAudio(sound['long_break']))
+                        voice.play(PCMVolumeTransformer(FFmpegPCMAudio(sound['long_break']), volume=0.2))
                         self.timer.start(max_ticks=600) #600
                     else:
                         await self.show_message(ctx, "Hora da pausa!\n"
                                                     "5 minutos", COLOR_PAUSE)
-                        voice.play(FFmpegPCMAudio(sound['short_break']))
+                        voice.play(PCMVolumeTransformer(FFmpegPCMAudio(sound['short_break']), volume=0.2))
                         self.timer.start(max_ticks=300) #300
                     while self.timer.get_status() == TimerStatus.RUNNING:
                         await asyncio.sleep(1)

@@ -5,6 +5,7 @@ from FocoBot.timer import Timer, TimerStatus
 from dotenv import load_dotenv
 from discord.ext import commands
 from discord import FFmpegPCMAudio
+from discord import FFmpegOpusAudio
 
 COLOR_DANGER = 0xff6f69
 COLOR_SUCCESS = 0x88d8b0
@@ -35,19 +36,20 @@ class DiscordCog(commands.Cog):
         #conecta no canal de voz
         if (ctx.author.voice):
             channel = ctx.message.author.voice.channel
-            voice = await channel.connect() 
-            #caminho dos audios
+            voice = await channel.connect()
+            # caminho dos audios
             sound = {
-                'start': '../sounds/start.mp3',
-                'short_break': '../sounds/short-break.mp3',
-                'long_break': '../sounds/long-break.mp3',
-            }            
+                'start': '../sounds/start2.mp3',
+                'short_break': '../sounds/short-break_fixed.mp3',
+                'long_break': '../sounds/long-break_fixed.mp3',
+            }
 
             while True:
-                voice.play(FFmpegPCMAudio(sound['start']))
                 await self.show_message(ctx, "Hora de começar a focar!\n"
-                                            "25 minutos", COLOR_SUCCESS)
-                self.timer.start(max_ticks=1500)
+                                             "25 minutos", COLOR_SUCCESS)
+                voice.play(FFmpegPCMAudio(sound['start']))
+
+                self.timer.start(max_ticks=1500) #1500
                 self.add_round()
                 while self.timer.get_status() == TimerStatus.RUNNING:
                     await asyncio.sleep(1)
@@ -57,12 +59,12 @@ class DiscordCog(commands.Cog):
                         await self.show_message(ctx, "Hora da pausa longa!\n"
                                                     "10 minutos", COLOR_PAUSE)
                         voice.play(FFmpegPCMAudio(sound['long_break']))
-                        self.timer.start(max_ticks=600)
+                        self.timer.start(max_ticks=600) #600
                     else:
                         await self.show_message(ctx, "Hora da pausa!\n"
                                                     "5 minutos", COLOR_PAUSE)
                         voice.play(FFmpegPCMAudio(sound['short_break']))
-                        self.timer.start(max_ticks=300)
+                        self.timer.start(max_ticks=300) #300
                     while self.timer.get_status() == TimerStatus.RUNNING:
                         await asyncio.sleep(1)
                         self.timer.tick()

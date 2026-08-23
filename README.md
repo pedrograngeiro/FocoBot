@@ -64,6 +64,10 @@ Todos os comandos canônicos acima também estão disponíveis com `/`. Na prime
 execução após uma atualização, o Discord pode levar alguns minutos para exibir
 os comandos globais de barra.
 
+Durante cada etapa, o FocoBot mantém uma mensagem animada com indicador de
+atividade, barra de progresso, tempo restante e decorrido. A mensagem é editada
+a cada cinco segundos para acompanhar o cronômetro sem poluir o canal.
+
 ## Desenvolvimento
 
 Execute os testes com:

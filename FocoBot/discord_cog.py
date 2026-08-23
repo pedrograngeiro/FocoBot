@@ -1,4 +1,5 @@
 import asyncio
+import logging
 from pathlib import Path
 
 import discord
@@ -6,6 +7,8 @@ from discord import FFmpegPCMAudio, PCMVolumeTransformer
 from discord.ext import commands
 
 from FocoBot.timer import Timer, TimerStatus
+
+LOGGER = logging.getLogger(__name__)
 
 COLOR_DANGER = 0xFF6F69
 COLOR_SUCCESS = 0x88D8B0
@@ -15,6 +18,9 @@ WORK_SECONDS = 25 * 60
 SHORT_BREAK_SECONDS = 5 * 60
 LONG_BREAK_SECONDS = 10 * 60
 LONG_BREAK_EVERY = 4
+TIMER_UPDATE_INTERVAL = 5
+PROGRESS_BAR_LENGTH = 12
+ANIMATION_FRAMES = ("◐", "◓", "◑", "◒")
 SOUNDS_DIR = Path(__file__).resolve().parents[1] / "sounds"
 SOUNDS = {
     "start": SOUNDS_DIR / "start2.mp3",
@@ -30,12 +36,20 @@ STATUS_LABELS = {
 }
 
 
+def make_progress_bar(elapsed: int, total: int, length: int = PROGRESS_BAR_LENGTH) -> str:
+    progress = min(1.0, elapsed / total) if total > 0 else 0.0
+    filled = int(progress * length)
+    return "█" * filled + "░" * (length - filled)
+
+
 class DiscordCog(commands.Cog):
     def __init__(self, bot: commands.Bot) -> None:
         self.bot = bot
         self.timer = Timer()
         self.round = 0
         self.phase = "aguardando"
+        self.timer_message: discord.Message | None = None
+        self.timer_color = COLOR_SUCCESS
 
     @commands.Cog.listener()
     async def on_ready(self) -> None:
@@ -63,35 +77,101 @@ class DiscordCog(commands.Cog):
             await voice.move_to(channel)
 
         while True:
-            self.phase = "foco"
-            await self.show_message(ctx, "Hora de começar a focar!\n25 minutos", COLOR_SUCCESS)
-            self.play_sound(voice, "start")
-
-            self.timer.start(max_ticks=WORK_SECONDS)
             self.add_round()
-            while self.timer.is_active():
-                await asyncio.sleep(1)
-                self.timer.tick()
+            await self.run_stage(
+                ctx,
+                voice,
+                phase="foco",
+                duration=WORK_SECONDS,
+                color=COLOR_SUCCESS,
+                sound="start",
+            )
 
             if self.timer.get_status() == TimerStatus.EXPIRED:
                 if self.round % LONG_BREAK_EVERY == 0:
-                    self.phase = "pausa longa"
-                    await self.show_message(ctx, "Hora da pausa longa!\n10 minutos", COLOR_PAUSE)
-                    self.play_sound(voice, "long_break")
-                    self.timer.start(max_ticks=LONG_BREAK_SECONDS)
+                    await self.run_stage(
+                        ctx,
+                        voice,
+                        phase="pausa longa",
+                        duration=LONG_BREAK_SECONDS,
+                        color=COLOR_PAUSE,
+                        sound="long_break",
+                    )
                 else:
-                    self.phase = "pausa curta"
-                    await self.show_message(ctx, "Hora da pausa!\n5 minutos", COLOR_PAUSE)
-                    self.play_sound(voice, "short_break")
-                    self.timer.start(max_ticks=SHORT_BREAK_SECONDS)
-
-                while self.timer.is_active():
-                    await asyncio.sleep(1)
-                    self.timer.tick()
+                    await self.run_stage(
+                        ctx,
+                        voice,
+                        phase="pausa curta",
+                        duration=SHORT_BREAK_SECONDS,
+                        color=COLOR_PAUSE,
+                        sound="short_break",
+                    )
                 if self.timer.get_status() == TimerStatus.EXPIRED:
                     await self.show_message(ctx, f"Round {self.round} finalizado!", COLOR_SUCCESS)
             if self.timer.get_status() == TimerStatus.STOPPED:
                 break
+
+    async def run_stage(
+        self,
+        ctx: commands.Context,
+        voice: discord.VoiceClient,
+        *,
+        phase: str,
+        duration: int,
+        color: int,
+        sound: str,
+    ) -> None:
+        self.phase = phase
+        self.timer_color = color
+        self.timer.start(max_ticks=duration)
+        self.play_sound(voice, sound)
+        self.timer_message = await ctx.send(embed=self.build_timer_embed())
+
+        seconds_since_update = 0
+        while self.timer.is_active():
+            await asyncio.sleep(1)
+            self.timer.tick()
+            seconds_since_update += 1
+            if seconds_since_update >= TIMER_UPDATE_INTERVAL or not self.timer.is_active():
+                await self.refresh_timer_message()
+                seconds_since_update = 0
+
+    def build_timer_embed(self) -> discord.Embed:
+        status = self.timer.get_status()
+        if status == TimerStatus.PAUSED:
+            indicator = "⏸"
+        elif status == TimerStatus.STOPPED:
+            indicator = "⏹"
+        elif status == TimerStatus.EXPIRED:
+            indicator = "✓"
+        else:
+            frame = (self.timer.get_ticks() // TIMER_UPDATE_INTERVAL) % len(ANIMATION_FRAMES)
+            indicator = ANIMATION_FRAMES[frame]
+
+        progress = make_progress_bar(
+            self.timer.get_ticks(), self.timer.max_ticks, PROGRESS_BAR_LENGTH
+        )
+        embed = discord.Embed(
+            title=f"{indicator} {self.phase.title()}",
+            description=f"`{progress}`",
+            color=self.timer_color,
+        )
+        embed.add_field(name="Restante", value=self.timer.convert_remaining_ticks(), inline=True)
+        embed.add_field(name="Decorrido", value=self.timer.convert_ticks(), inline=True)
+        embed.add_field(name="Status", value=STATUS_LABELS[status].title(), inline=True)
+        embed.set_footer(
+            text=f"Round {self.round} • atualização a cada {TIMER_UPDATE_INTERVAL} segundos"
+        )
+        return embed
+
+    async def refresh_timer_message(self) -> None:
+        if self.timer_message is None:
+            return
+        try:
+            self.timer_message = await self.timer_message.edit(embed=self.build_timer_embed())
+        except discord.HTTPException:
+            LOGGER.exception("Não foi possível atualizar a mensagem do cronômetro")
+            self.timer_message = None
 
     @staticmethod
     def play_sound(voice: discord.VoiceClient, sound: str) -> None:
@@ -119,6 +199,7 @@ class DiscordCog(commands.Cog):
         await self.show_message(ctx, "Hora de fazer uma pausa!", COLOR_DANGER)
         self.timer.stop()
         self.phase = "parado"
+        await self.refresh_timer_message()
         if ctx.voice_client:
             await ctx.voice_client.disconnect()
 
@@ -139,6 +220,7 @@ class DiscordCog(commands.Cog):
             ctx, "Muito obrigado por utilizar o FocoBot!\nBom descanso!", COLOR_DANGER
         )
         self.timer.stop()
+        await self.refresh_timer_message()
         if ctx.voice_client:
             await ctx.voice_client.disconnect()
 
@@ -147,6 +229,7 @@ class DiscordCog(commands.Cog):
         if not self.timer.pause():
             await self.show_message(ctx, "Não há uma etapa rodando para pausar.", COLOR_DANGER)
             return
+        await self.refresh_timer_message()
         await self.show_message(ctx, "Cronômetro pausado.", COLOR_PAUSE)
 
     @commands.hybrid_command(name="retomar", help="Retoma a etapa pausada")
@@ -154,6 +237,7 @@ class DiscordCog(commands.Cog):
         if not self.timer.resume():
             await self.show_message(ctx, "O cronômetro não está pausado.", COLOR_DANGER)
             return
+        await self.refresh_timer_message()
         await self.show_message(ctx, "Cronômetro retomado!", COLOR_SUCCESS)
 
     @commands.hybrid_command(name="pular", help="Pula a etapa atual")
@@ -161,6 +245,7 @@ class DiscordCog(commands.Cog):
         if not self.timer.expire():
             await self.show_message(ctx, "Não há uma etapa ativa para pular.", COLOR_DANGER)
             return
+        await self.refresh_timer_message()
         await self.show_message(ctx, f"Etapa de {self.phase} pulada.", COLOR_EXPIRED)
 
     @commands.hybrid_command(name="tempo", help="Mostra o estado e o tempo atual")

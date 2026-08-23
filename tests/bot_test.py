@@ -1,6 +1,6 @@
 import asyncio
 from types import SimpleNamespace
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 
 from FocoBot.__main__ import create_bot
 from FocoBot.discord_cog import (
@@ -9,6 +9,7 @@ from FocoBot.discord_cog import (
     DiscordCog,
     make_progress_bar,
 )
+from FocoBot.timer import TimerStatus
 
 
 def test_bot_uses_required_intents_and_preserves_prefix():
@@ -75,14 +76,15 @@ def test_progress_bar_handles_empty_partial_and_complete_states():
 
 def test_timer_embed_exposes_live_progress():
     cog = DiscordCog(create_bot())
-    cog.round = 2
-    cog.phase = "foco"
-    cog.timer_color = COLOR_SUCCESS
-    cog.timer.start(max_ticks=10)
+    session = cog.get_session(1)
+    session.round = 2
+    session.phase = "foco"
+    session.timer_color = COLOR_SUCCESS
+    session.timer.start(max_ticks=10)
     for _ in range(4):
-        cog.timer.tick()
+        session.timer.tick()
 
-    embed = cog.build_timer_embed().to_dict()
+    embed = cog.build_timer_embed(session).to_dict()
 
     assert embed["title"].endswith("Foco")
     assert embed["description"] == "`████░░░░░░░░`"
@@ -93,17 +95,18 @@ def test_timer_embed_exposes_live_progress():
     ]
     assert embed["footer"]["text"].startswith("Round 2")
 
-    cog.timer.tick()
-    assert cog.build_timer_embed().title.startswith("◓")
+    session.timer.tick()
+    assert cog.build_timer_embed(session).title.startswith("◓")
 
 
 def test_paused_timer_embed_uses_static_indicator():
     cog = DiscordCog(create_bot())
-    cog.phase = "pausa curta"
-    cog.timer.start(max_ticks=10)
-    cog.timer.pause()
+    session = cog.get_session(1)
+    session.phase = "pausa curta"
+    session.timer.start(max_ticks=10)
+    session.timer.pause()
 
-    embed = cog.build_timer_embed().to_dict()
+    embed = cog.build_timer_embed(session).to_dict()
 
     assert embed["title"] == "⏸ Pausa Curta"
     assert embed["fields"][2]["value"] == "Pausado"
@@ -111,15 +114,16 @@ def test_paused_timer_embed_uses_static_indicator():
 
 def test_refresh_timer_message_edits_the_existing_message():
     cog = DiscordCog(create_bot())
+    session = cog.get_session(1)
     original_message = AsyncMock()
     updated_message = AsyncMock()
     original_message.edit = AsyncMock(return_value=updated_message)
-    cog.timer_message = original_message
+    session.timer_message = original_message
 
-    asyncio.run(cog.refresh_timer_message())
+    asyncio.run(cog.refresh_timer_message(session))
 
     original_message.edit.assert_awaited_once()
-    assert cog.timer_message is updated_message
+    assert session.timer_message is updated_message
 
 
 def test_configurations_are_isolated_by_guild():
@@ -130,6 +134,106 @@ def test_configurations_are_isolated_by_guild():
 
     assert first is not second
     assert first == second
+
+
+def test_timer_sessions_are_isolated_by_guild():
+    cog = DiscordCog(create_bot())
+    first = cog.get_session(1)
+    second = cog.get_session(2)
+
+    first.timer.start(max_ticks=10)
+    second.timer.start(max_ticks=20)
+    first.timer.tick()
+    second.timer.pause()
+
+    assert first is not second
+    assert first.timer.get_ticks() == 1
+    assert first.timer.get_status() == TimerStatus.RUNNING
+    assert second.timer.get_ticks() == 0
+    assert second.timer.get_status() == TimerStatus.PAUSED
+
+
+def test_stopping_one_guild_does_not_stop_another():
+    cog = DiscordCog(create_bot())
+    cog.show_message = AsyncMock()
+    cog.refresh_timer_message = AsyncMock()
+    first = cog.get_session(1)
+    second = cog.get_session(2)
+    first.timer.start(max_ticks=10)
+    second.timer.start(max_ticks=10)
+    ctx = AsyncMock()
+    ctx.guild = SimpleNamespace(id=1)
+    ctx.voice_client = None
+
+    asyncio.run(cog.stop.callback(cog, ctx))
+
+    assert first.timer.get_status() == TimerStatus.STOPPED
+    assert second.timer.get_status() == TimerStatus.RUNNING
+
+
+def test_second_start_is_rejected_while_guild_is_connecting():
+    cog = DiscordCog(create_bot())
+    cog.show_message = AsyncMock()
+    cog.get_session(1).starting = True
+    ctx = AsyncMock()
+    ctx.guild = SimpleNamespace(id=1)
+
+    asyncio.run(cog.start.callback(cog, ctx))
+
+    cog.show_message.assert_awaited_once()
+    assert "já está rodando" in cog.show_message.await_args.args[1]
+
+
+def test_two_guild_stages_can_run_concurrently(monkeypatch):
+    cog = DiscordCog(create_bot())
+    cog.play_sound = MagicMock()
+    first = cog.get_session(1)
+    second = cog.get_session(2)
+    first_message = AsyncMock()
+    second_message = AsyncMock()
+    first_message.edit = AsyncMock(return_value=first_message)
+    second_message.edit = AsyncMock(return_value=second_message)
+    first_ctx = AsyncMock()
+    second_ctx = AsyncMock()
+    first_ctx.send = AsyncMock(return_value=first_message)
+    second_ctx.send = AsyncMock(return_value=second_message)
+    original_sleep = asyncio.sleep
+
+    async def instant_sleep(_seconds):
+        await original_sleep(0)
+
+    monkeypatch.setattr("FocoBot.discord_cog.asyncio.sleep", instant_sleep)
+
+    async def run_stages():
+        await asyncio.gather(
+            cog.run_stage(
+                first,
+                first_ctx,
+                AsyncMock(),
+                phase="foco",
+                duration=2,
+                color=COLOR_SUCCESS,
+                sound="start",
+            ),
+            cog.run_stage(
+                second,
+                second_ctx,
+                AsyncMock(),
+                phase="foco",
+                duration=3,
+                color=COLOR_SUCCESS,
+                sound="start",
+            ),
+        )
+
+    asyncio.run(run_stages())
+
+    assert first.timer.get_status() == TimerStatus.EXPIRED
+    assert first.timer.get_ticks() == 2
+    assert second.timer.get_status() == TimerStatus.EXPIRED
+    assert second.timer.get_ticks() == 3
+    first_message.edit.assert_awaited()
+    second_message.edit.assert_awaited()
 
 
 def test_configure_command_updates_authorized_guild():

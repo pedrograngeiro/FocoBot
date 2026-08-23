@@ -73,6 +73,10 @@ a cada cinco segundos para acompanhar o cronômetro sem poluir o canal.
 Os tempos são configurados separadamente por servidor e permanecem ativos até
 o bot ser reiniciado. Apenas membros com **Gerenciar Servidor** podem alterá-los.
 
+Cada servidor possui uma sessão independente, então o FocoBot pode atender
+vários servidores e canais de voz simultaneamente. Dentro do mesmo servidor, o
+Discord permite apenas uma conexão de voz do bot por vez.
+
 ## Desenvolvimento
 
 Execute os testes com:

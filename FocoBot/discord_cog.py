@@ -7,7 +7,8 @@ from discord import FFmpegPCMAudio, PCMVolumeTransformer
 from discord.ext import commands
 
 from FocoBot.config import PomodoroConfig
-from FocoBot.timer import Timer, TimerStatus
+from FocoBot.session import PomodoroSession
+from FocoBot.timer import TimerStatus
 
 LOGGER = logging.getLogger(__name__)
 
@@ -42,11 +43,7 @@ def make_progress_bar(elapsed: int, total: int, length: int = PROGRESS_BAR_LENGT
 class DiscordCog(commands.Cog):
     def __init__(self, bot: commands.Bot) -> None:
         self.bot = bot
-        self.timer = Timer()
-        self.round = 0
-        self.phase = "aguardando"
-        self.timer_message: discord.Message | None = None
-        self.timer_color = COLOR_SUCCESS
+        self.sessions: dict[int, PomodoroSession] = {}
         self.configurations: dict[int, PomodoroConfig] = {}
 
     @commands.Cog.listener()
@@ -57,7 +54,13 @@ class DiscordCog(commands.Cog):
         name="comecar", aliases=["começar", "foco"], help="Inicia o tempo de foco"
     )
     async def start(self, ctx: commands.Context) -> None:
-        if self.timer.is_active():
+        if ctx.guild is None:
+            await self.show_message(ctx, "Use este comando em um servidor.", COLOR_DANGER)
+            return
+
+        guild_id = ctx.guild.id
+        session = self.get_session(guild_id)
+        if session.starting or session.timer.is_active():
             await self.show_message(ctx, "O bot de foco já está rodando!", COLOR_SUCCESS)
             return
 
@@ -66,19 +69,31 @@ class DiscordCog(commands.Cog):
             await ctx.send("Entre em um canal de voz para usar o FocoBot.")
             return
 
-        await ctx.defer()
-        guild_id = ctx.guild.id
-        channel = author_voice.channel
-        voice = ctx.voice_client
-        if voice is None:
-            voice = await channel.connect()
-        elif voice.channel != channel:
-            await voice.move_to(channel)
+        session.starting = True
+        try:
+            await ctx.defer()
+            channel = author_voice.channel
+            voice = ctx.voice_client
+            if voice is None:
+                voice = await channel.connect()
+            elif voice.channel != channel:
+                await voice.move_to(channel)
+            await self.run_cycle(ctx, voice, session, guild_id)
+        finally:
+            session.starting = False
 
+    async def run_cycle(
+        self,
+        ctx: commands.Context,
+        voice: discord.VoiceClient,
+        session: PomodoroSession,
+        guild_id: int,
+    ) -> None:
         while True:
             config = self.get_config(guild_id)
-            self.add_round()
+            session.round += 1
             await self.run_stage(
+                session,
                 ctx,
                 voice,
                 phase="foco",
@@ -87,10 +102,11 @@ class DiscordCog(commands.Cog):
                 sound="start",
             )
 
-            if self.timer.get_status() == TimerStatus.EXPIRED:
+            if session.timer.get_status() == TimerStatus.EXPIRED:
                 config = self.get_config(guild_id)
-                if self.round % config.rounds_before_long_break == 0:
+                if session.round % config.rounds_before_long_break == 0:
                     await self.run_stage(
+                        session,
                         ctx,
                         voice,
                         phase="pausa longa",
@@ -100,6 +116,7 @@ class DiscordCog(commands.Cog):
                     )
                 else:
                     await self.run_stage(
+                        session,
                         ctx,
                         voice,
                         phase="pausa curta",
@@ -107,13 +124,16 @@ class DiscordCog(commands.Cog):
                         color=COLOR_PAUSE,
                         sound="short_break",
                     )
-                if self.timer.get_status() == TimerStatus.EXPIRED:
-                    await self.show_message(ctx, f"Round {self.round} finalizado!", COLOR_SUCCESS)
-            if self.timer.get_status() == TimerStatus.STOPPED:
+                if session.timer.get_status() == TimerStatus.EXPIRED:
+                    await self.show_message(
+                        ctx, f"Round {session.round} finalizado!", COLOR_SUCCESS
+                    )
+            if session.timer.get_status() == TimerStatus.STOPPED:
                 break
 
     async def run_stage(
         self,
+        session: PomodoroSession,
         ctx: commands.Context,
         voice: discord.VoiceClient,
         *,
@@ -122,23 +142,23 @@ class DiscordCog(commands.Cog):
         color: int,
         sound: str,
     ) -> None:
-        self.phase = phase
-        self.timer_color = color
-        self.timer.start(max_ticks=duration)
+        session.phase = phase
+        session.timer_color = color
+        session.timer.start(max_ticks=duration)
         self.play_sound(voice, sound)
-        self.timer_message = await ctx.send(embed=self.build_timer_embed())
+        session.timer_message = await ctx.send(embed=self.build_timer_embed(session))
 
         seconds_since_update = 0
-        while self.timer.is_active():
+        while session.timer.is_active():
             await asyncio.sleep(1)
-            self.timer.tick()
+            session.timer.tick()
             seconds_since_update += 1
-            if seconds_since_update >= TIMER_UPDATE_INTERVAL or not self.timer.is_active():
-                await self.refresh_timer_message()
+            if seconds_since_update >= TIMER_UPDATE_INTERVAL or not session.timer.is_active():
+                await self.refresh_timer_message(session)
                 seconds_since_update = 0
 
-    def build_timer_embed(self) -> discord.Embed:
-        status = self.timer.get_status()
+    def build_timer_embed(self, session: PomodoroSession) -> discord.Embed:
+        status = session.timer.get_status()
         if status == TimerStatus.PAUSED:
             indicator = "⏸"
         elif status == TimerStatus.STOPPED:
@@ -146,39 +166,53 @@ class DiscordCog(commands.Cog):
         elif status == TimerStatus.EXPIRED:
             indicator = "✓"
         else:
-            frame = (self.timer.get_ticks() // TIMER_UPDATE_INTERVAL) % len(ANIMATION_FRAMES)
+            frame = (session.timer.get_ticks() // TIMER_UPDATE_INTERVAL) % len(ANIMATION_FRAMES)
             indicator = ANIMATION_FRAMES[frame]
 
         progress = make_progress_bar(
-            self.timer.get_ticks(), self.timer.max_ticks, PROGRESS_BAR_LENGTH
+            session.timer.get_ticks(), session.timer.max_ticks, PROGRESS_BAR_LENGTH
         )
         embed = discord.Embed(
-            title=f"{indicator} {self.phase.title()}",
+            title=f"{indicator} {session.phase.title()}",
             description=f"`{progress}`",
-            color=self.timer_color,
+            color=session.timer_color,
         )
-        embed.add_field(name="Restante", value=self.timer.convert_remaining_ticks(), inline=True)
-        embed.add_field(name="Decorrido", value=self.timer.convert_ticks(), inline=True)
+        embed.add_field(name="Restante", value=session.timer.convert_remaining_ticks(), inline=True)
+        embed.add_field(name="Decorrido", value=session.timer.convert_ticks(), inline=True)
         embed.add_field(name="Status", value=STATUS_LABELS[status].title(), inline=True)
         embed.set_footer(
-            text=f"Round {self.round} • atualização a cada {TIMER_UPDATE_INTERVAL} segundos"
+            text=f"Round {session.round} • atualização a cada {TIMER_UPDATE_INTERVAL} segundos"
         )
         return embed
 
-    async def refresh_timer_message(self) -> None:
-        if self.timer_message is None:
+    async def refresh_timer_message(self, session: PomodoroSession) -> None:
+        if session.timer_message is None:
             return
         try:
-            self.timer_message = await self.timer_message.edit(embed=self.build_timer_embed())
+            session.timer_message = await session.timer_message.edit(
+                embed=self.build_timer_embed(session)
+            )
         except discord.HTTPException:
             LOGGER.exception("Não foi possível atualizar a mensagem do cronômetro")
-            self.timer_message = None
+            session.timer_message = None
+
+    def get_session(self, guild_id: int) -> PomodoroSession:
+        return self.sessions.setdefault(guild_id, PomodoroSession(timer_color=COLOR_SUCCESS))
+
+    async def get_context_session(self, ctx: commands.Context) -> PomodoroSession | None:
+        if ctx.guild is None:
+            await self.show_message(ctx, "Use este comando em um servidor.", COLOR_DANGER)
+            return None
+        return self.get_session(ctx.guild.id)
 
     def get_config(self, guild_id: int) -> PomodoroConfig:
         return self.configurations.setdefault(guild_id, PomodoroConfig())
 
     def build_config_embed(
-        self, config: PomodoroConfig, title: str = "Configuração do Pomodoro"
+        self,
+        config: PomodoroConfig,
+        session: PomodoroSession,
+        title: str = "Configuração do Pomodoro",
     ) -> discord.Embed:
         embed = discord.Embed(title=title, color=COLOR_SUCCESS)
         embed.add_field(name="Foco", value=f"{config.focus_minutes} min", inline=True)
@@ -189,7 +223,7 @@ class DiscordCog(commands.Cog):
             value=f"{config.rounds_before_long_break} ciclos",
             inline=False,
         )
-        if self.timer.is_active():
+        if session.timer.is_active():
             embed.set_footer(text="Os novos valores entram na próxima etapa")
         return embed
 
@@ -202,14 +236,14 @@ class DiscordCog(commands.Cog):
         message = discord.Embed(title=title, color=color)
         await ctx.send(embed=message)
 
-    def add_round(self) -> None:
-        self.round += 1
-
     @commands.hybrid_command(
         name="parar", help="Finalizar o foco! Atenção! (Não encerra o número de rounds)"
     )
     async def stop(self, ctx: commands.Context) -> None:
-        if not self.timer.is_active():
+        session = await self.get_context_session(ctx)
+        if session is None:
+            return
+        if not session.timer.is_active():
             await self.show_message(
                 ctx,
                 "O focobot já está parado, você deveria iniciar o cronômetro antes de pará-lo!",
@@ -217,9 +251,9 @@ class DiscordCog(commands.Cog):
             )
             return
         await self.show_message(ctx, "Hora de fazer uma pausa!", COLOR_DANGER)
-        self.timer.stop()
-        self.phase = "parado"
-        await self.refresh_timer_message()
+        session.timer.stop()
+        session.phase = "parado"
+        await self.refresh_timer_message(session)
         if ctx.voice_client:
             await ctx.voice_client.disconnect()
 
@@ -227,57 +261,72 @@ class DiscordCog(commands.Cog):
         name="encerrar", help="Finalizar o foco! (Zerando o número de rounds!)"
     )
     async def end(self, ctx: commands.Context) -> None:
-        if not self.timer.is_active():
+        session = await self.get_context_session(ctx)
+        if session is None:
+            return
+        if not session.timer.is_active():
             await self.show_message(
                 ctx,
                 "O focobot já está parado, você deveria iniciar o cronômetro antes de pará-lo!",
                 COLOR_SUCCESS,
             )
             return
-        self.round = 0
-        self.phase = "parado"
+        session.round = 0
+        session.phase = "parado"
         await self.show_message(
             ctx, "Muito obrigado por utilizar o FocoBot!\nBom descanso!", COLOR_DANGER
         )
-        self.timer.stop()
-        await self.refresh_timer_message()
+        session.timer.stop()
+        await self.refresh_timer_message(session)
         if ctx.voice_client:
             await ctx.voice_client.disconnect()
 
     @commands.hybrid_command(name="pausar", help="Pausa a etapa atual")
     async def pause(self, ctx: commands.Context) -> None:
-        if not self.timer.pause():
+        session = await self.get_context_session(ctx)
+        if session is None:
+            return
+        if not session.timer.pause():
             await self.show_message(ctx, "Não há uma etapa rodando para pausar.", COLOR_DANGER)
             return
-        await self.refresh_timer_message()
+        await self.refresh_timer_message(session)
         await self.show_message(ctx, "Cronômetro pausado.", COLOR_PAUSE)
 
     @commands.hybrid_command(name="retomar", help="Retoma a etapa pausada")
     async def resume(self, ctx: commands.Context) -> None:
-        if not self.timer.resume():
+        session = await self.get_context_session(ctx)
+        if session is None:
+            return
+        if not session.timer.resume():
             await self.show_message(ctx, "O cronômetro não está pausado.", COLOR_DANGER)
             return
-        await self.refresh_timer_message()
+        await self.refresh_timer_message(session)
         await self.show_message(ctx, "Cronômetro retomado!", COLOR_SUCCESS)
 
     @commands.hybrid_command(name="pular", help="Pula a etapa atual")
     async def skip(self, ctx: commands.Context) -> None:
-        if not self.timer.expire():
+        session = await self.get_context_session(ctx)
+        if session is None:
+            return
+        if not session.timer.expire():
             await self.show_message(ctx, "Não há uma etapa ativa para pular.", COLOR_DANGER)
             return
-        await self.refresh_timer_message()
-        await self.show_message(ctx, f"Etapa de {self.phase} pulada.", COLOR_EXPIRED)
+        await self.refresh_timer_message(session)
+        await self.show_message(ctx, f"Etapa de {session.phase} pulada.", COLOR_EXPIRED)
 
     @commands.hybrid_command(name="tempo", help="Mostra o estado e o tempo atual")
     async def show_time(self, ctx: commands.Context) -> None:
-        status = STATUS_LABELS[self.timer.get_status()]
+        session = await self.get_context_session(ctx)
+        if session is None:
+            return
+        status = STATUS_LABELS[session.timer.get_status()]
         await self.show_message(
             ctx,
-            f"Round: {self.round}\n"
-            f"Etapa: {self.phase}\n"
+            f"Round: {session.round}\n"
+            f"Etapa: {session.phase}\n"
             f"Status: {status}\n"
-            f"Restante: {self.timer.convert_remaining_ticks()}\n"
-            f"Decorrido: {self.timer.convert_ticks()}",
+            f"Restante: {session.timer.convert_remaining_ticks()}\n"
+            f"Decorrido: {session.timer.convert_ticks()}",
             COLOR_SUCCESS,
         )
 
@@ -288,7 +337,11 @@ class DiscordCog(commands.Cog):
         if ctx.guild is None:
             await self.show_message(ctx, "Use este comando em um servidor.", COLOR_DANGER)
             return
-        await ctx.send(embed=self.build_config_embed(self.get_config(ctx.guild.id)))
+        await ctx.send(
+            embed=self.build_config_embed(
+                self.get_config(ctx.guild.id), self.get_session(ctx.guild.id)
+            )
+        )
 
     @commands.hybrid_command(name="configurar", help="Altera os tempos do Pomodoro")
     @discord.app_commands.describe(
@@ -328,7 +381,13 @@ class DiscordCog(commands.Cog):
             return
 
         self.configurations[ctx.guild.id] = config
-        await ctx.send(embed=self.build_config_embed(config, title="Configuração atualizada"))
+        await ctx.send(
+            embed=self.build_config_embed(
+                config,
+                self.get_session(ctx.guild.id),
+                title="Configuração atualizada",
+            )
+        )
 
     @commands.hybrid_command(name="ajuda", help="Mostra as funções de cada comando")
     async def show_help(self, ctx: commands.Context) -> None:

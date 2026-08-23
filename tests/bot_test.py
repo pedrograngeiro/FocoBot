@@ -1,4 +1,5 @@
 import asyncio
+from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 from FocoBot.__main__ import create_bot
@@ -26,6 +27,8 @@ def test_setup_hook_registers_legacy_commands():
     assert {command.name for command in bot.commands} == {
         "ajuda",
         "comecar",
+        "configuracao",
+        "configurar",
         "encerrar",
         "parar",
         "pausar",
@@ -35,6 +38,8 @@ def test_setup_hook_registers_legacy_commands():
     }
     assert bot.get_command("começar").name == "comecar"
     assert bot.get_command("foco").name == "comecar"
+    assert bot.get_command("config").name == "configuracao"
+    assert bot.get_command("tempos").name == "configuracao"
     bot.tree.sync.assert_awaited_once_with()
 
 
@@ -47,6 +52,8 @@ def test_hybrid_commands_expose_application_commands():
     assert {command.name for command in bot.tree.get_commands()} == {
         "ajuda",
         "comecar",
+        "configuracao",
+        "configurar",
         "encerrar",
         "parar",
         "pausar",
@@ -113,3 +120,42 @@ def test_refresh_timer_message_edits_the_existing_message():
 
     original_message.edit.assert_awaited_once()
     assert cog.timer_message is updated_message
+
+
+def test_configurations_are_isolated_by_guild():
+    cog = DiscordCog(create_bot())
+
+    first = cog.get_config(1)
+    second = cog.get_config(2)
+
+    assert first is not second
+    assert first == second
+
+
+def test_configure_command_updates_authorized_guild():
+    cog = DiscordCog(create_bot())
+    ctx = AsyncMock()
+    ctx.guild = SimpleNamespace(id=123)
+    ctx.author = SimpleNamespace(guild_permissions=SimpleNamespace(manage_guild=True))
+
+    asyncio.run(cog.configure.callback(cog, ctx, 50, 10, 20, 3))
+
+    config = cog.get_config(123)
+    assert config.focus_minutes == 50
+    assert config.short_break_minutes == 10
+    assert config.long_break_minutes == 20
+    assert config.rounds_before_long_break == 3
+    ctx.send.assert_awaited_once()
+
+
+def test_configure_command_rejects_unauthorized_member():
+    cog = DiscordCog(create_bot())
+    cog.show_message = AsyncMock()
+    ctx = AsyncMock()
+    ctx.guild = SimpleNamespace(id=123)
+    ctx.author = SimpleNamespace(guild_permissions=SimpleNamespace(manage_guild=False))
+
+    asyncio.run(cog.configure.callback(cog, ctx, 50, 10, 20, 3))
+
+    assert cog.get_config(123).focus_minutes == 25
+    cog.show_message.assert_awaited_once()

@@ -6,6 +6,7 @@ import discord
 from discord import FFmpegPCMAudio, PCMVolumeTransformer
 from discord.ext import commands
 
+from FocoBot.config import PomodoroConfig
 from FocoBot.timer import Timer, TimerStatus
 
 LOGGER = logging.getLogger(__name__)
@@ -14,10 +15,6 @@ COLOR_DANGER = 0xFF6F69
 COLOR_SUCCESS = 0x88D8B0
 COLOR_PAUSE = 0xFFCC5C
 COLOR_EXPIRED = 0xFC3468
-WORK_SECONDS = 25 * 60
-SHORT_BREAK_SECONDS = 5 * 60
-LONG_BREAK_SECONDS = 10 * 60
-LONG_BREAK_EVERY = 4
 TIMER_UPDATE_INTERVAL = 5
 PROGRESS_BAR_LENGTH = 12
 ANIMATION_FRAMES = ("◐", "◓", "◑", "◒")
@@ -50,6 +47,7 @@ class DiscordCog(commands.Cog):
         self.phase = "aguardando"
         self.timer_message: discord.Message | None = None
         self.timer_color = COLOR_SUCCESS
+        self.configurations: dict[int, PomodoroConfig] = {}
 
     @commands.Cog.listener()
     async def on_ready(self) -> None:
@@ -69,6 +67,7 @@ class DiscordCog(commands.Cog):
             return
 
         await ctx.defer()
+        guild_id = ctx.guild.id
         channel = author_voice.channel
         voice = ctx.voice_client
         if voice is None:
@@ -77,23 +76,25 @@ class DiscordCog(commands.Cog):
             await voice.move_to(channel)
 
         while True:
+            config = self.get_config(guild_id)
             self.add_round()
             await self.run_stage(
                 ctx,
                 voice,
                 phase="foco",
-                duration=WORK_SECONDS,
+                duration=config.focus_seconds,
                 color=COLOR_SUCCESS,
                 sound="start",
             )
 
             if self.timer.get_status() == TimerStatus.EXPIRED:
-                if self.round % LONG_BREAK_EVERY == 0:
+                config = self.get_config(guild_id)
+                if self.round % config.rounds_before_long_break == 0:
                     await self.run_stage(
                         ctx,
                         voice,
                         phase="pausa longa",
-                        duration=LONG_BREAK_SECONDS,
+                        duration=config.long_break_seconds,
                         color=COLOR_PAUSE,
                         sound="long_break",
                     )
@@ -102,7 +103,7 @@ class DiscordCog(commands.Cog):
                         ctx,
                         voice,
                         phase="pausa curta",
-                        duration=SHORT_BREAK_SECONDS,
+                        duration=config.short_break_seconds,
                         color=COLOR_PAUSE,
                         sound="short_break",
                     )
@@ -172,6 +173,25 @@ class DiscordCog(commands.Cog):
         except discord.HTTPException:
             LOGGER.exception("Não foi possível atualizar a mensagem do cronômetro")
             self.timer_message = None
+
+    def get_config(self, guild_id: int) -> PomodoroConfig:
+        return self.configurations.setdefault(guild_id, PomodoroConfig())
+
+    def build_config_embed(
+        self, config: PomodoroConfig, title: str = "Configuração do Pomodoro"
+    ) -> discord.Embed:
+        embed = discord.Embed(title=title, color=COLOR_SUCCESS)
+        embed.add_field(name="Foco", value=f"{config.focus_minutes} min", inline=True)
+        embed.add_field(name="Pausa curta", value=f"{config.short_break_minutes} min", inline=True)
+        embed.add_field(name="Pausa longa", value=f"{config.long_break_minutes} min", inline=True)
+        embed.add_field(
+            name="Pausa longa a cada",
+            value=f"{config.rounds_before_long_break} ciclos",
+            inline=False,
+        )
+        if self.timer.is_active():
+            embed.set_footer(text="Os novos valores entram na próxima etapa")
+        return embed
 
     @staticmethod
     def play_sound(voice: discord.VoiceClient, sound: str) -> None:
@@ -260,6 +280,55 @@ class DiscordCog(commands.Cog):
             f"Decorrido: {self.timer.convert_ticks()}",
             COLOR_SUCCESS,
         )
+
+    @commands.hybrid_command(
+        name="configuracao", aliases=["config", "tempos"], help="Mostra os tempos configurados"
+    )
+    async def show_config(self, ctx: commands.Context) -> None:
+        if ctx.guild is None:
+            await self.show_message(ctx, "Use este comando em um servidor.", COLOR_DANGER)
+            return
+        await ctx.send(embed=self.build_config_embed(self.get_config(ctx.guild.id)))
+
+    @commands.hybrid_command(name="configurar", help="Altera os tempos do Pomodoro")
+    @discord.app_commands.describe(
+        foco="Minutos de foco (1–180)",
+        pausa="Minutos de pausa curta (1–60)",
+        longa="Minutos de pausa longa (1–60)",
+        ciclos="Ciclos até a pausa longa (1–12)",
+    )
+    async def configure(
+        self,
+        ctx: commands.Context,
+        foco: int,
+        pausa: int,
+        longa: int,
+        ciclos: int,
+    ) -> None:
+        if ctx.guild is None:
+            await self.show_message(ctx, "Use este comando em um servidor.", COLOR_DANGER)
+            return
+
+        permissions = getattr(ctx.author, "guild_permissions", None)
+        if permissions is None or not permissions.manage_guild:
+            await self.show_message(
+                ctx, "Você precisa da permissão Gerenciar Servidor.", COLOR_DANGER
+            )
+            return
+
+        try:
+            config = PomodoroConfig(
+                focus_minutes=foco,
+                short_break_minutes=pausa,
+                long_break_minutes=longa,
+                rounds_before_long_break=ciclos,
+            )
+        except ValueError as error:
+            await self.show_message(ctx, f"Configuração inválida: {error}.", COLOR_DANGER)
+            return
+
+        self.configurations[ctx.guild.id] = config
+        await ctx.send(embed=self.build_config_embed(config, title="Configuração atualizada"))
 
     @commands.hybrid_command(name="ajuda", help="Mostra as funções de cada comando")
     async def show_help(self, ctx: commands.Context) -> None:

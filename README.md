@@ -58,6 +58,8 @@ longa de 10 minutos a cada quatro rodadas.
 - `!retomar`: continua uma etapa pausada
 - `!pular`: avança para a próxima etapa do ciclo
 - `!tempo`: mostra etapa, estado, tempo restante e tempo decorrido
+- `!configuracao`: mostra os tempos configurados no servidor
+- `!configurar 25 5 10 4`: altera foco, pausa curta, pausa longa e ciclos
 - `!ajuda`: lista os comandos disponíveis
 
 Todos os comandos canônicos acima também estão disponíveis com `/`. Na primeira
@@ -67,6 +69,9 @@ os comandos globais de barra.
 Durante cada etapa, o FocoBot mantém uma mensagem animada com indicador de
 atividade, barra de progresso, tempo restante e decorrido. A mensagem é editada
 a cada cinco segundos para acompanhar o cronômetro sem poluir o canal.
+
+Os tempos são configurados separadamente por servidor e permanecem ativos até
+o bot ser reiniciado. Apenas membros com **Gerenciar Servidor** podem alterá-los.
 
 ## Desenvolvimento
 

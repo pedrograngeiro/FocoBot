@@ -1,5 +1,4 @@
 from enum import Enum
-import time
 
 
 class TimerStatus(Enum):
@@ -10,37 +9,34 @@ class TimerStatus(Enum):
 
 
 class Timer:
-
-
-    def __init__(self):
+    def __init__(self) -> None:
         self.status = TimerStatus.INITIALIZED
         self.ticks = 0
-        self.round = 0
-        self.numero_de_segundos = 0
-        self.min_seg = 0
+        self.max_ticks = 0
 
-    def get_status(self):
+    def get_status(self) -> TimerStatus:
         return self.status
 
-    def start(self, max_ticks):
+    def start(self, max_ticks: int) -> None:
+        if max_ticks < 0:
+            raise ValueError("max_ticks não pode ser negativo")
         self.max_ticks = max_ticks
         self.status = TimerStatus.RUNNING
         self.ticks = 0
 
-    def stop(self):
+    def stop(self) -> None:
         self.status = TimerStatus.STOPPED
 
-    def get_ticks(self):
+    def get_ticks(self) -> int:
         return self.ticks
 
-    def convert_ticks(self):
-        self.numero_de_segundos = self.ticks
-        self.ty_res = time.gmtime(self.numero_de_segundos)
-        self.min_seg = time.strftime("%M:%S", self.ty_res)
-        return self.min_seg
+    def convert_ticks(self) -> str:
+        minutes, seconds = divmod(self.ticks, 60)
+        return f"{minutes:02d}:{seconds:02d}"
 
-    def tick(self):
+    def tick(self) -> None:
+        if self.status != TimerStatus.RUNNING:
+            return
         self.ticks += 1
-        if self.get_ticks() >= self.max_ticks:
+        if self.ticks >= self.max_ticks:
             self.status = TimerStatus.EXPIRED
-

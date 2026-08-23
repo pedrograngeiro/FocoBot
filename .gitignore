@@ -1,4 +1,7 @@
 .env
+.venv/
+.pytest_cache/
+.ruff_cache/
 .idea
 __pycache__/
 images/imagem foca +1baixo.png

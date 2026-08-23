@@ -54,3 +54,39 @@ def test_convert_ticks_formats_elapsed_time():
 def test_start_rejects_negative_duration():
     with pytest.raises(ValueError, match="negativo"):
         Timer().start(max_ticks=-1)
+
+
+def test_pause_freezes_ticks_until_resume():
+    timer = Timer()
+    timer.start(max_ticks=3)
+    timer.tick()
+
+    assert timer.pause() is True
+    timer.tick()
+    assert timer.get_ticks() == 1
+    assert timer.get_status() == TimerStatus.PAUSED
+
+    assert timer.resume() is True
+    timer.tick()
+    assert timer.get_ticks() == 2
+    assert timer.get_status() == TimerStatus.RUNNING
+
+
+def test_expire_skips_running_or_paused_timer():
+    timer = Timer()
+    timer.start(max_ticks=10)
+    timer.pause()
+
+    assert timer.expire() is True
+    assert timer.get_status() == TimerStatus.EXPIRED
+    assert timer.expire() is False
+
+
+def test_remaining_ticks_never_becomes_negative():
+    timer = Timer()
+    timer.start(max_ticks=1)
+    timer.tick()
+    timer.tick()
+
+    assert timer.get_remaining_ticks() == 0
+    assert timer.convert_remaining_ticks() == "00:00"

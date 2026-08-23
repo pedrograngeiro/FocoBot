@@ -21,6 +21,13 @@ SOUNDS = {
     "short_break": SOUNDS_DIR / "short-break_fixed.mp3",
     "long_break": SOUNDS_DIR / "long-break_fixed.mp3",
 }
+STATUS_LABELS = {
+    TimerStatus.INITIALIZED: "aguardando",
+    TimerStatus.RUNNING: "rodando",
+    TimerStatus.PAUSED: "pausado",
+    TimerStatus.STOPPED: "parado",
+    TimerStatus.EXPIRED: "finalizado",
+}
 
 
 class DiscordCog(commands.Cog):
@@ -28,14 +35,17 @@ class DiscordCog(commands.Cog):
         self.bot = bot
         self.timer = Timer()
         self.round = 0
+        self.phase = "aguardando"
 
     @commands.Cog.listener()
     async def on_ready(self) -> None:
         print(f"Estamos logados como: {self.bot.user}")
 
-    @commands.command(name="começar", aliases=["comecar"], help="Inicia o tempo de foco")
+    @commands.hybrid_command(
+        name="comecar", aliases=["começar", "foco"], help="Inicia o tempo de foco"
+    )
     async def start(self, ctx: commands.Context) -> None:
-        if self.timer.get_status() == TimerStatus.RUNNING:
+        if self.timer.is_active():
             await self.show_message(ctx, "O bot de foco já está rodando!", COLOR_SUCCESS)
             return
 
@@ -44,6 +54,7 @@ class DiscordCog(commands.Cog):
             await ctx.send("Entre em um canal de voz para usar o FocoBot.")
             return
 
+        await ctx.defer()
         channel = author_voice.channel
         voice = ctx.voice_client
         if voice is None:
@@ -52,26 +63,29 @@ class DiscordCog(commands.Cog):
             await voice.move_to(channel)
 
         while True:
+            self.phase = "foco"
             await self.show_message(ctx, "Hora de começar a focar!\n25 minutos", COLOR_SUCCESS)
             self.play_sound(voice, "start")
 
             self.timer.start(max_ticks=WORK_SECONDS)
             self.add_round()
-            while self.timer.get_status() == TimerStatus.RUNNING:
+            while self.timer.is_active():
                 await asyncio.sleep(1)
                 self.timer.tick()
 
             if self.timer.get_status() == TimerStatus.EXPIRED:
                 if self.round % LONG_BREAK_EVERY == 0:
+                    self.phase = "pausa longa"
                     await self.show_message(ctx, "Hora da pausa longa!\n10 minutos", COLOR_PAUSE)
                     self.play_sound(voice, "long_break")
                     self.timer.start(max_ticks=LONG_BREAK_SECONDS)
                 else:
+                    self.phase = "pausa curta"
                     await self.show_message(ctx, "Hora da pausa!\n5 minutos", COLOR_PAUSE)
                     self.play_sound(voice, "short_break")
                     self.timer.start(max_ticks=SHORT_BREAK_SECONDS)
 
-                while self.timer.get_status() == TimerStatus.RUNNING:
+                while self.timer.is_active():
                     await asyncio.sleep(1)
                     self.timer.tick()
                 if self.timer.get_status() == TimerStatus.EXPIRED:
@@ -91,11 +105,11 @@ class DiscordCog(commands.Cog):
     def add_round(self) -> None:
         self.round += 1
 
-    @commands.command(
+    @commands.hybrid_command(
         name="parar", help="Finalizar o foco! Atenção! (Não encerra o número de rounds)"
     )
     async def stop(self, ctx: commands.Context) -> None:
-        if self.timer.get_status() != TimerStatus.RUNNING:
+        if not self.timer.is_active():
             await self.show_message(
                 ctx,
                 "O focobot já está parado, você deveria iniciar o cronômetro antes de pará-lo!",
@@ -104,12 +118,15 @@ class DiscordCog(commands.Cog):
             return
         await self.show_message(ctx, "Hora de fazer uma pausa!", COLOR_DANGER)
         self.timer.stop()
+        self.phase = "parado"
         if ctx.voice_client:
             await ctx.voice_client.disconnect()
 
-    @commands.command(name="encerrar", help="Finalizar o foco! (Zerando o número de rounds!)")
+    @commands.hybrid_command(
+        name="encerrar", help="Finalizar o foco! (Zerando o número de rounds!)"
+    )
     async def end(self, ctx: commands.Context) -> None:
-        if self.timer.get_status() != TimerStatus.RUNNING:
+        if not self.timer.is_active():
             await self.show_message(
                 ctx,
                 "O focobot já está parado, você deveria iniciar o cronômetro antes de pará-lo!",
@@ -117,6 +134,7 @@ class DiscordCog(commands.Cog):
             )
             return
         self.round = 0
+        self.phase = "parado"
         await self.show_message(
             ctx, "Muito obrigado por utilizar o FocoBot!\nBom descanso!", COLOR_DANGER
         )
@@ -124,15 +142,41 @@ class DiscordCog(commands.Cog):
         if ctx.voice_client:
             await ctx.voice_client.disconnect()
 
-    @commands.command(name="tempo", help="Mostra o tempo atual! ")
+    @commands.hybrid_command(name="pausar", help="Pausa a etapa atual")
+    async def pause(self, ctx: commands.Context) -> None:
+        if not self.timer.pause():
+            await self.show_message(ctx, "Não há uma etapa rodando para pausar.", COLOR_DANGER)
+            return
+        await self.show_message(ctx, "Cronômetro pausado.", COLOR_PAUSE)
+
+    @commands.hybrid_command(name="retomar", help="Retoma a etapa pausada")
+    async def resume(self, ctx: commands.Context) -> None:
+        if not self.timer.resume():
+            await self.show_message(ctx, "O cronômetro não está pausado.", COLOR_DANGER)
+            return
+        await self.show_message(ctx, "Cronômetro retomado!", COLOR_SUCCESS)
+
+    @commands.hybrid_command(name="pular", help="Pula a etapa atual")
+    async def skip(self, ctx: commands.Context) -> None:
+        if not self.timer.expire():
+            await self.show_message(ctx, "Não há uma etapa ativa para pular.", COLOR_DANGER)
+            return
+        await self.show_message(ctx, f"Etapa de {self.phase} pulada.", COLOR_EXPIRED)
+
+    @commands.hybrid_command(name="tempo", help="Mostra o estado e o tempo atual")
     async def show_time(self, ctx: commands.Context) -> None:
+        status = STATUS_LABELS[self.timer.get_status()]
         await self.show_message(
             ctx,
-            f"Estamos no round: {self.round} \nO tempo é: {self.timer.convert_ticks()}",
+            f"Round: {self.round}\n"
+            f"Etapa: {self.phase}\n"
+            f"Status: {status}\n"
+            f"Restante: {self.timer.convert_remaining_ticks()}\n"
+            f"Decorrido: {self.timer.convert_ticks()}",
             COLOR_SUCCESS,
         )
 
-    @commands.command(name="ajuda", help="Mostra as funções de cada comando! ")
+    @commands.hybrid_command(name="ajuda", help="Mostra as funções de cada comando")
     async def show_help(self, ctx: commands.Context) -> None:
         description = "\n".join(
             f"`!{command.name}` — {command.help}" for command in self.bot.commands

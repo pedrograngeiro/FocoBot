@@ -40,6 +40,9 @@ longa de 10 minutos a cada quatro rodadas.
    **Message Content Intent**. Ele é necessário porque o FocoBot preserva os
    comandos tradicionais com prefixo `!`.
 
+   Em **Installation**, mantenha também o escopo `applications.commands` para
+   que os comandos de barra sejam registrados.
+
 5. Inicie o bot a partir da raiz do projeto:
 
    ```bash
@@ -48,11 +51,18 @@ longa de 10 minutos a cada quatro rodadas.
 
 ## Comandos
 
-- `!começar` ou `!comecar`: inicia os ciclos no canal de voz atual
+- `/comecar`, `!começar`, `!comecar` ou `!foco`: inicia os ciclos no canal de voz atual
 - `!parar`: interrompe o ciclo sem zerar as rodadas
 - `!encerrar`: interrompe o ciclo e zera as rodadas
-- `!tempo`: mostra a rodada e o tempo decorrido no estágio atual
+- `!pausar`: congela a etapa e preserva o tempo restante
+- `!retomar`: continua uma etapa pausada
+- `!pular`: avança para a próxima etapa do ciclo
+- `!tempo`: mostra etapa, estado, tempo restante e tempo decorrido
 - `!ajuda`: lista os comandos disponíveis
+
+Todos os comandos canônicos acima também estão disponíveis com `/`. Na primeira
+execução após uma atualização, o Discord pode levar alguns minutos para exibir
+os comandos globais de barra.
 
 ## Desenvolvimento
 

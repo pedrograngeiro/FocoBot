@@ -1,3 +1,4 @@
+import logging
 import os
 
 import discord
@@ -5,6 +6,8 @@ from discord.ext import commands
 from dotenv import load_dotenv
 
 from FocoBot.discord_cog import DiscordCog
+
+LOGGER = logging.getLogger(__name__)
 
 
 class FocoBot(commands.Bot):
@@ -15,6 +18,11 @@ class FocoBot(commands.Bot):
 
     async def setup_hook(self) -> None:
         await self.add_cog(DiscordCog(self))
+        try:
+            synced = await self.tree.sync()
+            LOGGER.info("Sincronizados %s comandos de barra", len(synced))
+        except discord.HTTPException:
+            LOGGER.exception("Não foi possível sincronizar os comandos de barra")
 
 
 def create_bot() -> FocoBot:
